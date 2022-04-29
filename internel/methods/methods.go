@@ -60,55 +60,44 @@ func (h *AssetTxHandler) GetAssetAddress(c *gin.Context) {
 }
 
 func (h *AssetTxHandler) TransferNative(c *gin.Context) {
-	assetTx := &types.TransferNativeTx{}
-	err := c.BindJSON(assetTx)
+	assetTxJson := &types.TransferNativeTxJson{}
+	err := c.BindJSON(assetTxJson)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 	{
-		res, _ := json.Marshal(assetTx)
-		logger.Info("Handler TransferToken Tx: ", string(res))
+		res, _ := json.Marshal(assetTxJson)
+		logger.Info("Handler TransferNative Tx: ", string(res))
+	}
+
+	assetTx, err := assetTxJson.Convert()
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
 	}
 	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
 	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	auth, err := h.genAuth()
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
 
-	nonce, err := utils.BigIntDecode(assetTx.Nonce)
+	auth, err := h.genAuth()
 	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
-	amount, err := utils.BigIntDecode(assetTx.Amount)
+
+	tx, err := asset.TransferNativeToken(auth,
+		assetTx.Nonce,
+		assetTx.To,
+		assetTx.Amount,
+		assetTx.FeeToken,
+		assetTx.FeeAmount,
+		assetTx.Sig,
+		assetTx.SigKeyIndex)
 	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	feeAmount, err := utils.BigIntDecode(assetTx.FeeAmount)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	sig, err := utils.HexToBytes(assetTx.Sig)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	sigKeyIndex, err := utils.BigIntDecode(assetTx.SigKeyIndex)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	tx, err := asset.TransferNativeToken(auth, nonce, assetTx.To, amount, assetTx.FeeToken, feeAmount, sig, sigKeyIndex)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
 	retryCount := 0
@@ -133,55 +122,46 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 }
 
 func (h *AssetTxHandler) TransferToken(c *gin.Context) {
-	assetTx := &types.TransferTokenTx{}
-	err := c.BindJSON(assetTx)
+	assetTxJson := &types.TransferTokenTxJson{}
+	err := c.BindJSON(assetTxJson)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 	{
-		res, _ := json.Marshal(assetTx)
+		res, _ := json.Marshal(assetTxJson)
 		logger.Info("Handler TransferToken Tx: ", string(res))
 	}
-	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	auth, err := h.genAuth()
+
+	assetTx, err := assetTxJson.Convert()
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 
-	nonce, err := utils.BigIntDecode(assetTx.Nonce)
+	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
 	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
-	amount, err := utils.BigIntDecode(assetTx.Amount)
+
+	auth, err := h.genAuth()
 	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
-	feeAmount, err := utils.BigIntDecode(assetTx.FeeAmount)
+
+	tx, err := asset.TransferToken(auth,
+		assetTx.Nonce,
+		assetTx.Token,
+		assetTx.To,
+		assetTx.Amount,
+		assetTx.FeeToken,
+		assetTx.FeeAmount,
+		assetTx.Sig,
+		assetTx.SigKeyIndex)
 	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	sig, err := utils.HexToBytes(assetTx.Sig)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	sigKeyIndex, err := utils.BigIntDecode(assetTx.SigKeyIndex)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	tx, err := asset.TransferToken(auth, nonce, assetTx.Token, assetTx.To, amount, assetTx.FeeToken, feeAmount, sig, sigKeyIndex)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
 	retryCount := 0
@@ -206,61 +186,50 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 }
 
 func (h *AssetTxHandler) Execute(c *gin.Context) {
-	assetTx := &types.ExecuteTx{}
-	err := c.BindJSON(assetTx)
+	assetTxJson := &types.ExecuteTxJson{}
+	err := c.BindJSON(assetTxJson)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 	{
-		res, _ := json.Marshal(assetTx)
-		logger.Info("Handler TransferToken Tx: ", string(res))
+		res, _ := json.Marshal(assetTxJson)
+		logger.Info("Handler Execute Tx: ", string(res))
 	}
-	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	auth, err := h.genAuth()
+
+	assetTx, err := assetTxJson.Convert()
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 
-	nonce, err := utils.BigIntDecode(assetTx.Nonce)
+	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
-	value, err := utils.BigIntDecode(assetTx.Value)
+
+	auth, err := h.genAuth()
+	if err != nil {
+		c.IndentedJSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	tx, err := asset.Execute(auth,
+		assetTx.Nonce,
+		assetTx.To,
+		assetTx.Value,
+		assetTx.CallData,
+		assetTx.FeeToken,
+		assetTx.FeeAmount,
+		assetTx.Sig,
+		assetTx.SigKeyIndex)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
-	callData, err := utils.HexToBytes(assetTx.CallData)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	feeAmount, err := utils.BigIntDecode(assetTx.FeeAmount)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	sig, err := utils.HexToBytes(assetTx.Sig)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	sigKeyIndex, err := utils.BigIntDecode(assetTx.SigKeyIndex)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
-	}
-	tx, err := asset.Execute(auth, nonce, assetTx.To, value, callData, assetTx.FeeToken, feeAmount, sig, sigKeyIndex)
-	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
+	{
+		logger.Info("Execute Tx sent, hash:", tx.Hash())
 	}
 	retryCount := 0
 	for {

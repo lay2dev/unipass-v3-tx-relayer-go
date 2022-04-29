@@ -10,7 +10,7 @@ import (
 )
 
 func TestTypes(t *testing.T) {
-	tx1 := &TransferNativeTx{
+	tx1 := &TransferNativeTxJson{
 		AssetContract: common.BigToAddress(big.NewInt(7489474889940949889)),
 		RegisterEmail: "0xjdjdjdj",
 		Nonce:         "1233",
