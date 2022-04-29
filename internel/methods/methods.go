@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"asset_forwarder/internel/contracts/asset"
-	"asset_forwarder/internel/logger"
 	"asset_forwarder/internel/types"
 	"asset_forwarder/internel/utils"
 )
@@ -68,7 +67,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 	}
 	{
 		res, _ := json.Marshal(assetTxJson)
-		logger.Info("Handler TransferNative Tx: ", string(res))
+		log.Info("Handler TransferNative Tx: ", string(res))
 	}
 
 	assetTx, err := assetTxJson.Convert()
@@ -100,6 +99,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
+	log.Info("TransferNative tx sent, hash:", tx.Hash())
 	retryCount := 0
 	for {
 		receipt, err := h.client.TransactionReceipt(c, tx.Hash())
@@ -130,7 +130,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 	}
 	{
 		res, _ := json.Marshal(assetTxJson)
-		logger.Info("Handler TransferToken Tx: ", string(res))
+		log.Info("Handler TransferToken Tx: ", string(res))
 	}
 
 	assetTx, err := assetTxJson.Convert()
@@ -164,6 +164,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
+	log.Info("TransferToken tx sent, hash:", tx.Hash())
 	retryCount := 0
 	for {
 		receipt, err := h.client.TransactionReceipt(c, tx.Hash())
@@ -194,7 +195,7 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 	}
 	{
 		res, _ := json.Marshal(assetTxJson)
-		logger.Info("Handler Execute Tx: ", string(res))
+		log.Info("Handler Execute Tx: ", string(res))
 	}
 
 	assetTx, err := assetTxJson.Convert()
@@ -228,9 +229,7 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
-	{
-		logger.Info("Execute Tx sent, hash:", tx.Hash())
-	}
+	log.Info("Execute Tx sent, hash:", tx.Hash())
 	retryCount := 0
 	for {
 		receipt, err := h.client.TransactionReceipt(c, tx.Hash())

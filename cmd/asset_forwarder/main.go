@@ -12,11 +12,12 @@ func init() {
 	gin.SetMode(gin.ReleaseMode)
 }
 
+var log = logger.SugarLogger
+
 func main() {
-	logger.InitLogger()
 	r := gin.Default()
 
-	logger.Info("Asset Forwarder Starting")
+	log.Info("Asset Forwarder Starting")
 	r.Use(middlewares.Cors())
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{

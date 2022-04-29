@@ -3,7 +3,6 @@ package methods
 import (
 	"context"
 	"crypto/ecdsa"
-	"log"
 	"math/big"
 	"strings"
 
@@ -13,8 +12,11 @@ import (
 
 	"asset_forwarder/internel/configs"
 	"asset_forwarder/internel/contracts/entry"
+	"asset_forwarder/internel/logger"
 	"asset_forwarder/internel/utils"
 )
+
+var log = logger.SugarLogger
 
 type AssetTxHandler struct {
 	client      *ethclient.Client
