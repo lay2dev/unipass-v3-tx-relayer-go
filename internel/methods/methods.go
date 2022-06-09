@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 
 	"github.com/gin-gonic/gin"
@@ -18,10 +17,6 @@ import (
 )
 
 func (h *AssetTxHandler) genAuth() (*bind.TransactOpts, error) {
-	nonce, err := h.client.PendingNonceAt(context.Background(), h.fromAddress)
-	if err != nil {
-		return nil, err
-	}
 	gasPrice, err := h.client.SuggestGasPrice(context.Background())
 	if err != nil {
 		return nil, err
@@ -30,10 +25,30 @@ func (h *AssetTxHandler) genAuth() (*bind.TransactOpts, error) {
 	if err != nil {
 		return nil, err
 	}
-	auth.Nonce = big.NewInt(int64(nonce))
+
 	auth.Value = big.NewInt(0)      // in wei
 	auth.GasLimit = uint64(1000000) // in units
 	auth.GasPrice = gasPrice
+	var nonce uint64
+
+	retryCount := 0
+	for {
+		nonce, err = h.nonceCache.getNonceAndAdd()
+		if err == nil {
+			break
+		}
+		if err == errTransactionTooMuch && retryCount < 3 {
+			retryCount++
+			time.Sleep(time.Second * 2)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	auth.Nonce = big.NewInt(int64(nonce))
+	auth.NoSend = true
+
 	return auth, nil
 }
 
@@ -75,6 +90,11 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
+
+	if amount, ok := h.FeeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
+		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
+	}
+
 	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, err)
@@ -99,26 +119,10 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
+
+	h.txList.AddTx(tx)
 	log.Info("TransferNative tx sent, hash:", tx.Hash())
-	retryCount := 0
-	for {
-		receipt, err := h.client.TransactionReceipt(c, tx.Hash())
-		if err == nil {
-			if receipt.Status == 1 {
-				c.IndentedJSON(http.StatusOK, tx.Hash())
-				return
-			}
-			c.IndentedJSON(http.StatusBadRequest, tx.Hash())
-			return
-		}
-		if err == ethereum.NotFound && retryCount < 3 {
-			retryCount++
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		c.IndentedJSON(http.StatusBadRequest, tx.Hash())
-		return
-	}
+	c.IndentedJSON(http.StatusOK, tx.Hash())
 }
 
 func (h *AssetTxHandler) TransferToken(c *gin.Context) {
@@ -137,6 +141,10 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
+	}
+
+	if amount, ok := h.FeeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
+		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 
 	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
@@ -164,26 +172,11 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, err)
 		return
 	}
+
+	h.txList.AddTx(tx)
+
 	log.Info("TransferToken tx sent, hash:", tx.Hash())
-	retryCount := 0
-	for {
-		receipt, err := h.client.TransactionReceipt(c, tx.Hash())
-		if err == nil {
-			if receipt.Status == 1 {
-				c.IndentedJSON(http.StatusOK, tx.Hash())
-				return
-			}
-			c.IndentedJSON(http.StatusBadRequest, tx.Hash())
-			return
-		}
-		if err == ethereum.NotFound && retryCount < 3 {
-			retryCount++
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		c.IndentedJSON(http.StatusBadRequest, tx.Hash())
-		return
-	}
+	c.IndentedJSON(http.StatusOK, tx.Hash())
 }
 
 func (h *AssetTxHandler) Execute(c *gin.Context) {
@@ -202,6 +195,10 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
+	}
+
+	if amount, ok := h.FeeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
+		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 
 	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
@@ -229,32 +226,8 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
-	log.Info("Execute Tx sent, hash:", tx.Hash())
-	retryCount := 0
-	for {
-		receipt, err := h.client.TransactionReceipt(c, tx.Hash())
-		if err == nil {
-			if receipt.Status == 0 {
-				c.IndentedJSON(http.StatusBadRequest, tx.Hash())
-				return
-			}
-			for _, log := range receipt.Logs {
-				_, err := asset.ParseECallSuccess(*log)
-				if err == nil {
-					c.IndentedJSON(http.StatusOK, tx.Hash())
-					return
-				}
-			}
 
-			c.IndentedJSON(http.StatusBadRequest, tx.Hash())
-			return
-		}
-		if err == ethereum.NotFound && retryCount < 3 {
-			retryCount++
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		c.IndentedJSON(http.StatusBadRequest, tx.Hash())
-		return
-	}
+	h.txList.AddTx(tx)
+	log.Info("Execute Tx sent, hash:", tx.Hash())
+	c.IndentedJSON(http.StatusOK, tx.Hash())
 }

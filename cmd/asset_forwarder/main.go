@@ -4,6 +4,7 @@ import (
 	"asset_forwarder/internel/logger"
 	"asset_forwarder/internel/methods"
 	"asset_forwarder/internel/middlewares"
+	"fmt"
 
 	"github.com/gin-gonic/gin"
 )
@@ -36,5 +37,6 @@ func main() {
 	r.POST("/tx/transfer_token", handler.TransferToken)
 	r.POST("/tx/execute", handler.Execute)
 
+	fmt.Println("Asset Transaction Forwarder Started")
 	r.Run() // listen and serve on 0.0.0.0:8080
 }

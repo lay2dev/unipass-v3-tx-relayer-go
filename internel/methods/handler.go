@@ -3,10 +3,14 @@ package methods
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"math/big"
 	"strings"
+	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 
@@ -19,11 +23,13 @@ import (
 var log = logger.SugarLogger
 
 type AssetTxHandler struct {
-	client      *ethclient.Client
-	chainID     *big.Int
-	entry       *entry.Entry
-	privKey     *ecdsa.PrivateKey
-	fromAddress common.Address
+	client     *ethclient.Client
+	nonceCache *NonceCache
+	chainID    *big.Int
+	entry      *entry.Entry
+	privKey    *ecdsa.PrivateKey
+	txList     *TransactionList
+	FeeTokens  map[common.Address]*big.Int
 }
 
 const API_URL = "api_url"
@@ -31,20 +37,27 @@ const ENTRY_ADDRESS = "entry_address"
 const FEE_PROVIDER = "fee_provider"
 
 func NewAssetTxHandler() (*AssetTxHandler, error) {
-	viper, err := configs.LoadConfig()
+	h := &AssetTxHandler{
+		FeeTokens: make(map[common.Address]*big.Int),
+	}
+	conf, err := configs.LoadConfig()
 	if err != nil {
 		return nil, err
 	}
-	apiUrl := viper.GetString(API_URL)
-	client, err := ethclient.Dial(apiUrl)
+
+	for addrStr, amount := range conf.FeeTokens {
+		addr := common.HexToAddress(addrStr)
+		h.FeeTokens[addr] = new(big.Int).SetInt64(amount)
+	}
+
+	client, err := ethclient.Dial(conf.ApiUrl)
 	if err != nil {
 		return nil, err
 	}
-	entryAddressStr := viper.GetString(ENTRY_ADDRESS)
 
 	var entryAddress common.Address
 	{
-		buf, err := utils.HexToBytes(entryAddressStr)
+		buf, err := utils.HexToBytes(conf.EntryAddress)
 		if err != nil {
 			panic(err)
 		}
@@ -55,8 +68,7 @@ func NewAssetTxHandler() (*AssetTxHandler, error) {
 		panic(err)
 	}
 
-	feeProvider := viper.GetString(FEE_PROVIDER)
-	privKey, err := crypto.HexToECDSA(strings.TrimPrefix(feeProvider, "0x"))
+	privKey, err := crypto.HexToECDSA(strings.TrimPrefix(conf.FeeProvider, "0x"))
 	if err != nil {
 		panic(err)
 	}
@@ -72,11 +84,63 @@ func NewAssetTxHandler() (*AssetTxHandler, error) {
 	if err != nil {
 		panic(err)
 	}
-	return &AssetTxHandler{
-		client,
-		chainID,
-		entry,
-		privKey,
-		fromAddress,
-	}, nil
+
+	currentNonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+	if err != nil {
+		return nil, err
+	}
+	nonceCache := newNonceCache(fromAddress, currentNonce)
+
+	txList := NewTransactionList()
+
+	h.client = client
+	h.nonceCache = nonceCache
+	h.chainID = chainID
+	h.entry = entry
+	h.privKey = privKey
+	h.txList = txList
+
+	fmt.Println("Entry address: ", entryAddress)
+	fmt.Println("fee provider address: ", fromAddress)
+	fmt.Println("chainID: ", chainID)
+
+	go h.Run()
+
+	return h, nil
+}
+
+func (h *AssetTxHandler) Run() {
+	for {
+		if tx := h.txList.GetTx(); tx != nil {
+			h.SendTransactionAndWait(tx)
+			h.txList.FinishTx()
+			continue
+		}
+		time.Sleep(time.Second)
+	}
+}
+
+func (h *AssetTxHandler) SendTransactionAndWait(tx *types.Transaction) {
+	ctx := context.Background()
+	err := h.client.SendTransaction(ctx, tx)
+	if err != nil {
+		return
+	}
+	retryCount := 0
+	for {
+		receipt, err := h.client.TransactionReceipt(ctx, tx.Hash())
+		if err == nil {
+			if receipt.Status == 1 {
+				return
+			}
+			return
+		}
+		if err == ethereum.NotFound && retryCount < 3 {
+			retryCount++
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		log.Infof("TransferNative tx sent, hash:%s, err:%v\n", tx.Hash(), err)
+		return
+	}
 }

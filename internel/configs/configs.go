@@ -1,21 +1,30 @@
 package configs
 
 import (
+	"encoding/json"
+	"io/ioutil"
+
 	"github.com/spf13/viper"
 )
 
 var Viper *viper.Viper
 
-func LoadConfig() (*viper.Viper, error) {
-	Viper = viper.New()
-	Viper.SetConfigName(".env")
-	Viper.SetConfigType("env")
-	Viper.AddConfigPath(".")
+type ForwarderConfig struct {
+	ApiUrl       string
+	FeeProvider  string
+	EntryAddress string
+	FeeTokens    map[string]int64
+}
 
-	err := Viper.ReadInConfig()
+func LoadConfig() (*ForwarderConfig, error) {
+	data, err := ioutil.ReadFile("config.json")
 	if err != nil {
 		return nil, err
 	}
+	config := &ForwarderConfig{}
+	if err2 := json.Unmarshal(data, &config); err2 != nil {
+		panic(err2)
+	}
 
-	return Viper, nil
+	return config, nil
 }
