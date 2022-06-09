@@ -1,8 +1,8 @@
 package types
 
 import (
-	"asset_forwarder/internel/utils"
 	"math/big"
+	"tx_relayer/internel/utils"
 
 	"github.com/ethereum/go-ethereum/common"
 )

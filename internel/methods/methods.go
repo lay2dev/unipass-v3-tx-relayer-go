@@ -11,9 +11,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"asset_forwarder/internel/contracts/asset"
-	"asset_forwarder/internel/types"
-	"asset_forwarder/internel/utils"
+	"tx_relayer/internel/contracts/asset"
+	"tx_relayer/internel/types"
+	"tx_relayer/internel/utils"
 )
 
 func (h *AssetTxHandler) genAuth() (*bind.TransactOpts, error) {
@@ -91,7 +91,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		return
 	}
 
-	if amount, ok := h.FeeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
+	if amount, ok := h.feeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
 		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 
@@ -143,7 +143,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		return
 	}
 
-	if amount, ok := h.FeeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
+	if amount, ok := h.feeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
 		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 
@@ -197,7 +197,7 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		return
 	}
 
-	if amount, ok := h.FeeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
+	if amount, ok := h.feeTokens[assetTx.FeeToken]; !ok || assetTx.FeeAmount.Cmp(amount) < 0 {
 		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 

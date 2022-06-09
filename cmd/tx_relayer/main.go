@@ -1,10 +1,11 @@
 package main
 
 import (
-	"asset_forwarder/internel/logger"
-	"asset_forwarder/internel/methods"
-	"asset_forwarder/internel/middlewares"
 	"fmt"
+	"tx_relayer/internel/configs"
+	"tx_relayer/internel/logger"
+	"tx_relayer/internel/methods"
+	"tx_relayer/internel/middlewares"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,7 +27,12 @@ func main() {
 		})
 	})
 
-	handler, err := methods.NewAssetTxHandler()
+	conf, err := configs.LoadConfig()
+	if err != nil {
+		panic(err)
+	}
+
+	handler, err := methods.NewAssetTxHandler(conf)
 	if err != nil {
 		panic(err)
 	}
@@ -38,5 +44,9 @@ func main() {
 	r.POST("/tx/execute", handler.Execute)
 
 	fmt.Println("Asset Transaction Forwarder Started")
-	r.Run() // listen and serve on 0.0.0.0:8080
+
+	err = r.Run() // listen and serve on 0.0.0.0:8080
+	if err != nil {
+		panic(err)
+	}
 }

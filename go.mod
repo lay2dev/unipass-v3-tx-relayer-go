@@ -1,9 +1,8 @@
-module asset_forwarder
+module tx_relayer
 
 go 1.18
 
 require (
-	github.com/BurntSushi/toml v0.3.1
 	github.com/ethereum/go-ethereum v1.10.17
 	github.com/gin-gonic/gin v1.7.7
 	github.com/natefinch/lumberjack v2.0.0+incompatible

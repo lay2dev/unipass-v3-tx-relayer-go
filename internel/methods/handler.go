@@ -14,10 +14,10 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 
-	"asset_forwarder/internel/configs"
-	"asset_forwarder/internel/contracts/entry"
-	"asset_forwarder/internel/logger"
-	"asset_forwarder/internel/utils"
+	"tx_relayer/internel/configs"
+	"tx_relayer/internel/contracts/entry"
+	"tx_relayer/internel/logger"
+	"tx_relayer/internel/utils"
 )
 
 var log = logger.SugarLogger
@@ -29,25 +29,21 @@ type AssetTxHandler struct {
 	entry      *entry.Entry
 	privKey    *ecdsa.PrivateKey
 	txList     *TransactionList
-	FeeTokens  map[common.Address]*big.Int
+	feeTokens  map[common.Address]*big.Int
 }
 
 const API_URL = "api_url"
 const ENTRY_ADDRESS = "entry_address"
 const FEE_PROVIDER = "fee_provider"
 
-func NewAssetTxHandler() (*AssetTxHandler, error) {
+func NewAssetTxHandler(conf *configs.ForwarderConfig) (*AssetTxHandler, error) {
 	h := &AssetTxHandler{
-		FeeTokens: make(map[common.Address]*big.Int),
-	}
-	conf, err := configs.LoadConfig()
-	if err != nil {
-		return nil, err
+		feeTokens: make(map[common.Address]*big.Int),
 	}
 
 	for addrStr, amount := range conf.FeeTokens {
 		addr := common.HexToAddress(addrStr)
-		h.FeeTokens[addr] = new(big.Int).SetInt64(amount)
+		h.feeTokens[addr] = new(big.Int).SetInt64(amount)
 	}
 
 	client, err := ethclient.Dial(conf.ApiUrl)
