@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"tx_relayer/internel/configs"
+	"tx_relayer/internel/contracts/asset"
 	"tx_relayer/internel/contracts/entry"
 	"tx_relayer/internel/logger"
 	"tx_relayer/internel/utils"
@@ -27,6 +29,7 @@ type AssetTxHandler struct {
 	nonceCache *NonceCache
 	chainID    *big.Int
 	entry      *entry.Entry
+	assetABI   abi.ABI
 	privKey    *ecdsa.PrivateKey
 	txList     *TransactionList
 	feeTokens  map[common.Address]*big.Int
@@ -55,18 +58,18 @@ func NewAssetTxHandler(conf *configs.ForwarderConfig) (*AssetTxHandler, error) {
 	{
 		buf, err := utils.HexToBytes(conf.EntryAddress)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		copy(entryAddress[:], buf)
 	}
 	entry, err := entry.NewEntry(entryAddress, client)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	privKey, err := crypto.HexToECDSA(strings.TrimPrefix(conf.FeeProvider, "0x"))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	publicKey := privKey.Public()
@@ -89,6 +92,10 @@ func NewAssetTxHandler(conf *configs.ForwarderConfig) (*AssetTxHandler, error) {
 
 	txList := NewTransactionList()
 
+	h.assetABI, err = abi.JSON(strings.NewReader(asset.AssetABI))
+	if err != nil {
+		return nil, err
+	}
 	h.client = client
 	h.nonceCache = nonceCache
 	h.chainID = chainID
@@ -106,10 +113,14 @@ func NewAssetTxHandler(conf *configs.ForwarderConfig) (*AssetTxHandler, error) {
 }
 
 func (h *AssetTxHandler) Run() {
+	count := int64(10)
 	for {
-		if tx := h.txList.GetTx(); tx != nil {
-			h.SendTransactionAndWait(tx)
-			h.txList.FinishTx()
+		if txs := h.txList.GetTx(count); txs != nil {
+			for _, tx := range txs {
+				h.SendTransactionAndWait(tx)
+			}
+			finishedCount := len(txs)
+			h.txList.FinishTx(int64(finishedCount))
 			continue
 		}
 		time.Sleep(time.Second)
@@ -118,25 +129,35 @@ func (h *AssetTxHandler) Run() {
 
 func (h *AssetTxHandler) SendTransactionAndWait(tx *types.Transaction) {
 	ctx := context.Background()
-	err := h.client.SendTransaction(ctx, tx)
-	if err != nil {
-		return
+	for {
+		err := h.client.SendTransaction(ctx, tx)
+		if err != nil {
+			log.Error("SendTransaction:", tx, " failed, retrying.....")
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		break
 	}
 	retryCount := 0
 	for {
 		receipt, err := h.client.TransactionReceipt(ctx, tx.Hash())
 		if err == nil {
 			if receipt.Status == 1 {
-				return
+				log.Infof("Tx: %s execute success", tx.Hash())
+			} else {
+				log.Infof("Tx: %s execute failed", tx.Hash())
 			}
 			return
+
 		}
-		if err == ethereum.NotFound && retryCount < 3 {
-			retryCount++
-			time.Sleep(3 * time.Second)
-			continue
+		if err == ethereum.NotFound {
+			if retryCount < 5 {
+				retryCount++
+				time.Sleep(3 * time.Second)
+				continue
+			}
 		}
-		log.Infof("TransferNative tx sent, hash:%s, err:%v\n", tx.Hash(), err)
-		return
+		log.Errorf("Tx: %s get receipt errir", tx.Hash())
+		break
 	}
 }

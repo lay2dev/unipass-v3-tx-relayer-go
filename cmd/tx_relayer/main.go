@@ -19,7 +19,7 @@ var log = logger.SugarLogger
 func main() {
 	r := gin.Default()
 
-	log.Info("Asset Forwarder Starting")
+	log.Info("Asset tx relayer Starting")
 	r.Use(middlewares.Cors())
 	r.GET("/ping", func(c *gin.Context) {
 		c.JSON(200, gin.H{
@@ -43,7 +43,8 @@ func main() {
 	r.POST("/tx/transfer_token", handler.TransferToken)
 	r.POST("/tx/execute", handler.Execute)
 
-	fmt.Println("Asset Transaction Forwarder Started")
+	log.Info("Asset tx relayer Starting")
+	fmt.Println("Asset tx relayer Started")
 
 	err = r.Run() // listen and serve on 0.0.0.0:8080
 	if err != nil {

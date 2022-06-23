@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 
 	"github.com/gin-gonic/gin"
@@ -95,9 +96,44 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 
-	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
+	assetContract, err := asset.NewAsset(assetTx.AssetContract, h.client)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	gasPrice, err := h.client.SuggestGasPrice(context.Background())
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	callData, err := h.assetABI.Pack("transferNativeToken",
+		assetTx.Nonce,
+		assetTx.To,
+		assetTx.Amount,
+		assetTx.FeeToken,
+		assetTx.FeeAmount,
+		assetTx.Sig,
+		assetTx.SigKeyIndex)
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	_, err = h.client.CallContract(c, ethereum.CallMsg{
+		From:      h.nonceCache.fromAddress,
+		To:        &assetTx.AssetContract,
+		Gas:       1000000,
+		GasPrice:  gasPrice,
+		GasFeeCap: gasPrice,
+		GasTipCap: gasPrice,
+		Value:     big.NewInt(0),
+		Data:      callData,
+	}, nil)
+
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 
@@ -107,7 +143,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		return
 	}
 
-	tx, err := asset.TransferNativeToken(auth,
+	tx, err := assetContract.TransferNativeToken(auth,
 		assetTx.Nonce,
 		assetTx.To,
 		assetTx.Amount,
@@ -121,7 +157,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 	}
 
 	h.txList.AddTx(tx)
-	log.Info("TransferNative tx sent, hash:", tx.Hash())
+	log.Info("TransferNative tx added, hash:", tx.Hash())
 	c.IndentedJSON(http.StatusOK, tx.Hash())
 }
 
@@ -147,9 +183,45 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 
-	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
+	assetContract, err := asset.NewAsset(assetTx.AssetContract, h.client)
 	if err != nil {
 		c.IndentedJSON(http.StatusInternalServerError, err)
+		return
+	}
+
+	gasPrice, err := h.client.SuggestGasPrice(context.Background())
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	callData, err := h.assetABI.Pack("transferToken",
+		assetTx.Nonce,
+		assetTx.Token,
+		assetTx.To,
+		assetTx.Amount,
+		assetTx.FeeToken,
+		assetTx.FeeAmount,
+		assetTx.Sig,
+		assetTx.SigKeyIndex)
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	_, err = h.client.CallContract(c, ethereum.CallMsg{
+		From:      h.nonceCache.fromAddress,
+		To:        &assetTx.AssetContract,
+		Gas:       1000000,
+		GasPrice:  gasPrice,
+		GasFeeCap: gasPrice,
+		GasTipCap: gasPrice,
+		Value:     big.NewInt(0),
+		Data:      callData,
+	}, nil)
+
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 
@@ -159,7 +231,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		return
 	}
 
-	tx, err := asset.TransferToken(auth,
+	tx, err := assetContract.TransferToken(auth,
 		assetTx.Nonce,
 		assetTx.Token,
 		assetTx.To,
@@ -175,7 +247,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 
 	h.txList.AddTx(tx)
 
-	log.Info("TransferToken tx sent, hash:", tx.Hash())
+	log.Info("TransferToken tx added, hash:", tx.Hash())
 	c.IndentedJSON(http.StatusOK, tx.Hash())
 }
 
@@ -201,7 +273,42 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		c.IndentedJSON(http.StatusInternalServerError, "fee amount is not enough")
 	}
 
-	asset, err := asset.NewAsset(assetTx.AssetContract, h.client)
+	assetContract, err := asset.NewAsset(assetTx.AssetContract, h.client)
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	gasPrice, err := h.client.SuggestGasPrice(context.Background())
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	callData, err := h.assetABI.Pack("execute",
+		assetTx.Nonce,
+		assetTx.To,
+		assetTx.Value,
+		assetTx.CallData,
+		assetTx.FeeToken,
+		assetTx.FeeAmount,
+		assetTx.Sig,
+		assetTx.SigKeyIndex)
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	_, err = h.client.CallContract(c, ethereum.CallMsg{
+		From:      h.nonceCache.fromAddress,
+		To:        &assetTx.AssetContract,
+		Gas:       1000000,
+		GasPrice:  gasPrice,
+		GasFeeCap: gasPrice,
+		GasTipCap: gasPrice,
+		Value:     big.NewInt(0),
+		Data:      callData,
+	}, nil)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
@@ -213,7 +320,7 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		return
 	}
 
-	tx, err := asset.Execute(auth,
+	tx, err := assetContract.Execute(auth,
 		assetTx.Nonce,
 		assetTx.To,
 		assetTx.Value,
@@ -228,6 +335,6 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 	}
 
 	h.txList.AddTx(tx)
-	log.Info("Execute Tx sent, hash:", tx.Hash())
+	log.Info("Execute Tx added, hash:", tx.Hash())
 	c.IndentedJSON(http.StatusOK, tx.Hash())
 }
