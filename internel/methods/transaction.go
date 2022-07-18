@@ -3,27 +3,36 @@ package methods
 import (
 	"sync"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type TransactionList struct {
 	sync.Mutex
-	minNumber int64
-	maxNumber int64
-	txs       map[int64]*types.Transaction
+	fromAddress  common.Address
+	currentNonce uint64
+	minNumber    int64
+	maxNumber    int64
+	txs          map[int64]*types.Transaction
 }
 
-func NewTransactionList() *TransactionList {
+func NewTransactionList(fromAddress common.Address, currentNonce uint64) *TransactionList {
 	return &TransactionList{
-		minNumber: 0,
-		maxNumber: 0,
-		txs:       make(map[int64]*types.Transaction),
+		fromAddress:  fromAddress,
+		currentNonce: currentNonce,
+		minNumber:    0,
+		maxNumber:    0,
+		txs:          make(map[int64]*types.Transaction),
 	}
 }
 
+func (txList *TransactionList) getNonceAndAdd() (uint64, error) {
+	res := txList.currentNonce
+	txList.currentNonce++
+	return res, nil
+}
+
 func (txList *TransactionList) AddTx(txs ...*types.Transaction) {
-	txList.Lock()
-	defer txList.Unlock()
 	for _, tx := range txs {
 		txList.txs[txList.maxNumber] = tx
 		txList.maxNumber++
@@ -53,7 +62,10 @@ func (txList *TransactionList) GetTx(count int64) []*types.Transaction {
 func (txList *TransactionList) FinishTx(count int64) {
 	txList.Lock()
 	defer txList.Unlock()
-	delete(txList.txs, txList.minNumber)
+	for i := int64(0); i < count; i++ {
+		delete(txList.txs, txList.minNumber+i)
+	}
+
 	txList.minNumber += count
 	if txList.maxNumber == txList.minNumber {
 		txList.maxNumber = 0

@@ -1,6 +1,6 @@
 # 表示依赖 alpine 最新版
 FROM ubuntu:20.04
-ENV VERSION 1.0
+ENV VERSION 1.2
 
 RUN apt update && apt install libssl-dev ca-certificates -y && update-ca-certificates 
 

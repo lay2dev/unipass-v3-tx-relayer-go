@@ -25,14 +25,13 @@ import (
 var log = logger.SugarLogger
 
 type AssetTxHandler struct {
-	client     *ethclient.Client
-	nonceCache *NonceCache
-	chainID    *big.Int
-	entry      *entry.Entry
-	assetABI   abi.ABI
-	privKey    *ecdsa.PrivateKey
-	txList     *TransactionList
-	feeTokens  map[common.Address]*big.Int
+	client    *ethclient.Client
+	chainID   *big.Int
+	entry     *entry.Entry
+	assetABI  abi.ABI
+	privKey   *ecdsa.PrivateKey
+	txList    *TransactionList
+	feeTokens map[common.Address]*big.Int
 }
 
 const API_URL = "api_url"
@@ -88,16 +87,14 @@ func NewAssetTxHandler(conf *configs.ForwarderConfig) (*AssetTxHandler, error) {
 	if err != nil {
 		return nil, err
 	}
-	nonceCache := newNonceCache(fromAddress, currentNonce)
 
-	txList := NewTransactionList()
+	txList := NewTransactionList(fromAddress, currentNonce)
 
 	h.assetABI, err = abi.JSON(strings.NewReader(asset.AssetABI))
 	if err != nil {
 		return nil, err
 	}
 	h.client = client
-	h.nonceCache = nonceCache
 	h.chainID = chainID
 	h.entry = entry
 	h.privKey = privKey

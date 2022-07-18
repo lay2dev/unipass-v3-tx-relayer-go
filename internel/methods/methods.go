@@ -3,18 +3,24 @@ package methods
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/gin-gonic/gin"
 
 	"tx_relayer/internel/contracts/asset"
-	"tx_relayer/internel/types"
+	local_types "tx_relayer/internel/types"
 	"tx_relayer/internel/utils"
+)
+
+var (
+	errTransactionTooMuch = errors.New("transaction too much")
 )
 
 func (h *AssetTxHandler) genAuth() (*bind.TransactOpts, error) {
@@ -34,7 +40,7 @@ func (h *AssetTxHandler) genAuth() (*bind.TransactOpts, error) {
 
 	retryCount := 0
 	for {
-		nonce, err = h.nonceCache.getNonceAndAdd()
+		nonce, err = h.txList.getNonceAndAdd()
 		if err == nil {
 			break
 		}
@@ -75,7 +81,7 @@ func (h *AssetTxHandler) GetAssetAddress(c *gin.Context) {
 }
 
 func (h *AssetTxHandler) TransferNative(c *gin.Context) {
-	assetTxJson := &types.TransferNativeTxJson{}
+	assetTxJson := &local_types.TransferNativeTxJson{}
 	err := c.BindJSON(assetTxJson)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -122,7 +128,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 	}
 
 	_, err = h.client.CallContract(c, ethereum.CallMsg{
-		From:      h.nonceCache.fromAddress,
+		From:      h.txList.fromAddress,
 		To:        &assetTx.AssetContract,
 		Gas:       1000000,
 		GasPrice:  gasPrice,
@@ -137,10 +143,25 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		return
 	}
 
+	tx, err := h.addTransferNativeTx(assetContract, assetTx)
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	c.IndentedJSON(http.StatusOK, tx.Hash())
+}
+
+func (h *AssetTxHandler) addTransferNativeTx(
+	assetContract *asset.Asset,
+	assetTx *local_types.TransferNativeTx) (*types.Transaction, error) {
+
+	h.txList.Lock()
+	defer h.txList.Unlock()
+
 	auth, err := h.genAuth()
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, err)
-		return
+		return nil, err
 	}
 
 	tx, err := assetContract.TransferNativeToken(auth,
@@ -152,17 +173,16 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		assetTx.Sig,
 		assetTx.SigKeyIndex)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, err)
-		return
+		return nil, err
 	}
 
 	h.txList.AddTx(tx)
-	log.Info("TransferNative tx added, hash:", tx.Hash())
-	c.IndentedJSON(http.StatusOK, tx.Hash())
+	log.Infof("TransferNative tx added, hash:%s, nonce: %d", tx.Hash(), tx.Nonce())
+	return tx, nil
 }
 
 func (h *AssetTxHandler) TransferToken(c *gin.Context) {
-	assetTxJson := &types.TransferTokenTxJson{}
+	assetTxJson := &local_types.TransferTokenTxJson{}
 	err := c.BindJSON(assetTxJson)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -210,7 +230,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 	}
 
 	_, err = h.client.CallContract(c, ethereum.CallMsg{
-		From:      h.nonceCache.fromAddress,
+		From:      h.txList.fromAddress,
 		To:        &assetTx.AssetContract,
 		Gas:       1000000,
 		GasPrice:  gasPrice,
@@ -225,10 +245,24 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		return
 	}
 
+	tx, err := h.addTransferTokenTx(assetContract, assetTx)
+	if err != nil {
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
+		return
+	}
+
+	c.IndentedJSON(http.StatusOK, tx.Hash())
+}
+
+func (h *AssetTxHandler) addTransferTokenTx(
+	assetContract *asset.Asset,
+	assetTx *local_types.TransferTokenTx) (*types.Transaction, error) {
+	h.txList.Lock()
+	defer h.txList.Unlock()
+
 	auth, err := h.genAuth()
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, err)
-		return
+		return nil, err
 	}
 
 	tx, err := assetContract.TransferToken(auth,
@@ -241,18 +275,17 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		assetTx.Sig,
 		assetTx.SigKeyIndex)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, err)
-		return
+		return nil, err
 	}
 
 	h.txList.AddTx(tx)
 
-	log.Info("TransferToken tx added, hash:", tx.Hash())
-	c.IndentedJSON(http.StatusOK, tx.Hash())
+	log.Infof("TransferToken tx added, hash:%s, nonce:%d", tx.Hash(), tx.Nonce())
+	return tx, nil
 }
 
 func (h *AssetTxHandler) Execute(c *gin.Context) {
-	assetTxJson := &types.ExecuteTxJson{}
+	assetTxJson := &local_types.ExecuteTxJson{}
 	err := c.BindJSON(assetTxJson)
 	if err != nil {
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -300,7 +333,7 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 	}
 
 	_, err = h.client.CallContract(c, ethereum.CallMsg{
-		From:      h.nonceCache.fromAddress,
+		From:      h.txList.fromAddress,
 		To:        &assetTx.AssetContract,
 		Gas:       1000000,
 		GasPrice:  gasPrice,
@@ -314,12 +347,25 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		return
 	}
 
-	auth, err := h.genAuth()
+	tx, err := h.addExecuteTx(assetContract, assetTx)
 	if err != nil {
-		c.IndentedJSON(http.StatusInternalServerError, err)
+		c.IndentedJSON(http.StatusServiceUnavailable, err)
 		return
 	}
 
+	c.IndentedJSON(http.StatusOK, tx.Hash())
+}
+
+func (h *AssetTxHandler) addExecuteTx(
+	assetContract *asset.Asset,
+	assetTx *local_types.ExecuteTx) (*types.Transaction, error) {
+	h.txList.Lock()
+	defer h.txList.Unlock()
+
+	auth, err := h.genAuth()
+	if err != nil {
+		return nil, err
+	}
 	tx, err := assetContract.Execute(auth,
 		assetTx.Nonce,
 		assetTx.To,
@@ -330,11 +376,11 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		assetTx.Sig,
 		assetTx.SigKeyIndex)
 	if err != nil {
-		c.IndentedJSON(http.StatusServiceUnavailable, err)
-		return
+		return nil, err
 	}
 
 	h.txList.AddTx(tx)
-	log.Info("Execute Tx added, hash:", tx.Hash())
-	c.IndentedJSON(http.StatusOK, tx.Hash())
+
+	log.Infof("Execute Tx added, hash:%s, nonce:%d", tx.Hash(), tx.Nonce())
+	return tx, nil
 }
