@@ -42,6 +42,7 @@ func (txList *TransactionList) AddTx(txs ...*types.Transaction) {
 func (txList *TransactionList) GetTx(count int64) []*types.Transaction {
 	txList.Lock()
 	defer txList.Unlock()
+
 	if txList.maxNumber == txList.minNumber {
 		return nil
 	}
@@ -62,6 +63,7 @@ func (txList *TransactionList) GetTx(count int64) []*types.Transaction {
 func (txList *TransactionList) FinishTx(count int64) {
 	txList.Lock()
 	defer txList.Unlock()
+
 	for i := int64(0); i < count; i++ {
 		delete(txList.txs, txList.minNumber+i)
 	}

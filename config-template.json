@@ -2,6 +2,8 @@
     "apiUrl": "",
     "feeProvider": "",
     "entryAddress": "",
+    "discordID": 0,
+    "discordToken": "",
     "feeTokens": {
         "0x0000000000000000000000000000000000000000": 0
     }
