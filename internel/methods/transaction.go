@@ -47,7 +47,6 @@ func (txList *TransactionList) GetTx(count int64) []*types.Transaction {
 		return nil
 	}
 
-	println("len: ", count, txList.maxNumber, txList.minNumber)
 	if txList.maxNumber-txList.minNumber < count {
 		count = txList.maxNumber - txList.minNumber
 	}

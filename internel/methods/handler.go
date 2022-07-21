@@ -29,15 +29,16 @@ import (
 var log = logger.SugarLogger
 
 type AssetTxHandler struct {
-	client       *ethclient.Client
-	chainID      *big.Int
-	entry        *entry.Entry
-	assetABI     abi.ABI
-	privKey      *ecdsa.PrivateKey
-	txList       *TransactionList
-	discordId    snowflake.ID
-	discordToken string
-	feeTokens    map[common.Address]*big.Int
+	client        *ethclient.Client
+	webhookClient webhook.Client
+	chainID       *big.Int
+	entry         *entry.Entry
+	assetABI      abi.ABI
+	privKey       *ecdsa.PrivateKey
+	txList        *TransactionList
+	discordId     snowflake.ID
+	discordToken  string
+	feeTokens     map[common.Address]*big.Int
 }
 
 const API_URL = "api_url"
@@ -108,20 +109,41 @@ func NewAssetTxHandler(conf *configs.ForwarderConfig) (*AssetTxHandler, error) {
 	h.privKey = privKey
 	h.txList = txList
 
+	if h.discordId != 0 && h.discordToken != "" {
+		h.webhookClient = webhook.New(h.discordId, h.discordToken)
+		fmt.Printf("relayer %s started", h.txList.fromAddress)
+		sendDiscord(h.webhookClient, fmt.Sprintf("relayer %s started", h.txList.fromAddress))
+	}
+
 	fmt.Println("Entry address: ", entryAddress)
 	fmt.Println("fee provider address: ", fromAddress)
 	fmt.Println("chainID: ", chainID)
 
-	go h.Run()
 	go h.Monitor()
+	go func() {
+		for {
+			h.Run()
+		}
+	}()
 
 	return h, nil
 }
 
 func (h *AssetTxHandler) Run() {
+	defer func() {
+		if err := recover(); err != nil {
+			// 打印异常，关闭资源，退出此函数
+			log.Errorf("relayer paniced, err: %s", err)
+			if h.webhookClient != nil {
+				sendDiscord(h.webhookClient, fmt.Sprintf("relayer %s paniced, begin to restart...", h.txList.fromAddress))
+			}
+		}
+	}()
+
 	count := int64(10)
 	for {
 		if txs := h.txList.GetTx(count); txs != nil {
+			log.Infof("begin to send %d transactions to blockchain, current txlist minnumber:%d, maxnumber: %d", len(txs), h.txList.minNumber, h.txList.maxNumber)
 			for _, tx := range txs {
 				h.SendTransactionAndWait(tx)
 			}
@@ -136,19 +158,13 @@ func (h *AssetTxHandler) Run() {
 func (h *AssetTxHandler) Monitor() {
 	ticker := time.NewTicker(120 * time.Second)
 	lastNonce := uint64(0)
-	var client webhook.Client
-	if h.discordId != 0 && h.discordToken != "" {
-		client = webhook.New(h.discordId, h.discordToken)
-		fmt.Printf("relayer %s started", h.txList.fromAddress)
-		sendDiscord(client, fmt.Sprintf("relayer %s started", h.txList.fromAddress))
-	}
 
 	for range ticker.C {
 		tx := h.txList.txs[h.txList.minNumber]
 		if tx != nil {
 			if lastNonce == tx.Nonce() {
-				if client != nil {
-					sendDiscord(client, fmt.Sprintf("relayer %s get stuck", h.txList.fromAddress))
+				if h.webhookClient != nil {
+					sendDiscord(h.webhookClient, fmt.Sprintf("relayer %s get stuck", h.txList.fromAddress))
 				} else {
 					log.Error("relayer get stuck")
 				}
@@ -157,8 +173,8 @@ func (h *AssetTxHandler) Monitor() {
 		} else {
 			ok := h.txList.TryLock()
 			if !ok {
-				if client != nil {
-					sendDiscord(client, fmt.Sprintf("relayer %s maybe deadlocked", h.txList.fromAddress))
+				if h.webhookClient != nil {
+					sendDiscord(h.webhookClient, fmt.Sprintf("relayer %s maybe deadlocked", h.txList.fromAddress))
 				} else {
 					log.Error("relayer get stuck")
 				}
@@ -184,12 +200,25 @@ func (h *AssetTxHandler) SendTransactionAndWait(tx *types.Transaction) {
 	for {
 		err := h.client.SendTransaction(ctx, tx)
 		if err != nil {
-			log.Error("SendTransaction:", tx, " failed, retrying.....")
+			// 判断交易是否已经上链了
+			receipt, err := h.client.TransactionReceipt(ctx, tx.Hash())
+			if err == nil {
+				if receipt.Status == 1 {
+					log.Infof("Tx: %s execute success", tx.Hash())
+				} else {
+					log.Infof("Tx: %s execute failed", tx.Hash())
+				}
+				return
+			}
+			// 否则继续尝试发送
+			log.Error("SendTransaction:", tx.Hash(), " failed, retrying.....")
 			time.Sleep(2 * time.Second)
 			continue
 		}
 		break
 	}
+	// 等100 ms
+	time.Sleep(100 * time.Millisecond)
 	retryCount := 0
 	for {
 		receipt, err := h.client.TransactionReceipt(ctx, tx.Hash())
@@ -200,16 +229,16 @@ func (h *AssetTxHandler) SendTransactionAndWait(tx *types.Transaction) {
 				log.Infof("Tx: %s execute failed", tx.Hash())
 			}
 			return
-
 		}
 		if err == ethereum.NotFound {
 			if retryCount < 5 {
+				log.Error("TransactionReceipt:", tx.Hash(), " not found, retrying.....")
 				retryCount++
-				time.Sleep(3 * time.Second)
+				time.Sleep(2 * time.Second)
 				continue
 			}
 		}
-		log.Errorf("Tx: %s get receipt errir", tx.Hash())
-		break
+		log.Errorf("Tx: %s get receipt error", tx.Hash())
+		return
 	}
 }
