@@ -23,8 +23,8 @@ var (
 	errTransactionTooMuch = errors.New("transaction too much")
 )
 
-func (h *AssetTxHandler) genAuth() (*bind.TransactOpts, error) {
-	gasPrice, err := h.client.SuggestGasPrice(context.Background())
+func (h *AssetTxHandler) genAuth(ctx context.Context) (*bind.TransactOpts, error) {
+	gasPrice, err := h.client.SuggestGasPrice(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -112,7 +112,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 		return
 	}
 
-	gasPrice, err := h.client.SuggestGasPrice(context.Background())
+	gasPrice, err := h.client.SuggestGasPrice(c)
 	if err != nil {
 		log.Errorf("suggest gasPrice err: %s", err)
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -150,7 +150,7 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 	}
 
 	log.Infof("Call transfer native tx success, waiting send to blockchain")
-	tx, err := h.addTransferNativeTx(assetContract, assetTx)
+	tx, err := h.addTransferNativeTx(c, assetContract, assetTx)
 	if err != nil {
 		log.Errorf("add tx err: %s", err)
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -161,13 +161,14 @@ func (h *AssetTxHandler) TransferNative(c *gin.Context) {
 }
 
 func (h *AssetTxHandler) addTransferNativeTx(
+	ctx context.Context,
 	assetContract *asset.Asset,
 	assetTx *local_types.TransferNativeTx) (*types.Transaction, error) {
 
 	h.txList.Lock()
 	defer h.txList.Unlock()
 
-	auth, err := h.genAuth()
+	auth, err := h.genAuth(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +222,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 		return
 	}
 
-	gasPrice, err := h.client.SuggestGasPrice(context.Background())
+	gasPrice, err := h.client.SuggestGasPrice(c)
 	if err != nil {
 		log.Errorf("suggest gasPrice err: %s", err)
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -260,7 +261,7 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 	}
 
 	log.Infof("Call transferToken tx success, waiting send to blockchain")
-	tx, err := h.addTransferTokenTx(assetContract, assetTx)
+	tx, err := h.addTransferTokenTx(c, assetContract, assetTx)
 	if err != nil {
 		log.Errorf("add tx err: %s", err)
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -271,13 +272,14 @@ func (h *AssetTxHandler) TransferToken(c *gin.Context) {
 }
 
 func (h *AssetTxHandler) addTransferTokenTx(
+	ctx context.Context,
 	assetContract *asset.Asset,
 	assetTx *local_types.TransferTokenTx) (*types.Transaction, error) {
 
 	h.txList.Lock()
 	defer h.txList.Unlock()
 
-	auth, err := h.genAuth()
+	auth, err := h.genAuth(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +336,7 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 		return
 	}
 
-	gasPrice, err := h.client.SuggestGasPrice(context.Background())
+	gasPrice, err := h.client.SuggestGasPrice(c)
 	if err != nil {
 		log.Errorf("suggest gasPrice err: %s", err)
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -373,7 +375,7 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 	}
 
 	log.Infof("Call execute tx success, waiting send to blockchain")
-	tx, err := h.addExecuteTx(assetContract, assetTx)
+	tx, err := h.addExecuteTx(c, assetContract, assetTx)
 	if err != nil {
 		log.Errorf("add tx err: %s", err)
 		c.IndentedJSON(http.StatusServiceUnavailable, err)
@@ -384,13 +386,14 @@ func (h *AssetTxHandler) Execute(c *gin.Context) {
 }
 
 func (h *AssetTxHandler) addExecuteTx(
+	ctx context.Context,
 	assetContract *asset.Asset,
 	assetTx *local_types.ExecuteTx) (*types.Transaction, error) {
 
 	h.txList.Lock()
 	defer h.txList.Unlock()
 
-	auth, err := h.genAuth()
+	auth, err := h.genAuth(ctx)
 	if err != nil {
 		return nil, err
 	}

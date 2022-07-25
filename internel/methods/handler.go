@@ -149,6 +149,7 @@ func (h *AssetTxHandler) Run() {
 			}
 			finishedCount := len(txs)
 			h.txList.FinishTx(int64(finishedCount))
+			log.Infof("send %d transactions to blockchain finished, current txlist minnumber:%d, maxnumber: %d", len(txs), h.txList.minNumber, h.txList.maxNumber)
 			continue
 		}
 		time.Sleep(time.Second)
@@ -196,7 +197,8 @@ func sendDiscord(client webhook.Client, mes string) {
 }
 
 func (h *AssetTxHandler) SendTransactionAndWait(tx *types.Transaction) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
 	for {
 		err := h.client.SendTransaction(ctx, tx)
 		if err != nil {
@@ -217,6 +219,7 @@ func (h *AssetTxHandler) SendTransactionAndWait(tx *types.Transaction) {
 		}
 		break
 	}
+	log.Infof("Send Tx: %s to node success, waiting finality", tx.Hash())
 	// 等100 ms
 	time.Sleep(100 * time.Millisecond)
 	retryCount := 0
@@ -238,7 +241,7 @@ func (h *AssetTxHandler) SendTransactionAndWait(tx *types.Transaction) {
 				continue
 			}
 		}
-		log.Errorf("Tx: %s get receipt error", tx.Hash())
+		log.Errorf("Tx: %s get receipt error: %s", tx.Hash(), err)
 		return
 	}
 }
